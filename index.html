@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Violin Note Detector | Real-Time Pitch Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Raleway:wght@300;400;600&display=swap');
+        
+        body {
+            font-family: 'Raleway', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            min-height: 100vh;
+            color: white;
+            overflow-x: hidden;
+        }
+        
+        .title-font {
+            font-family: 'Cinzel', serif;
+            text-shadow: 0 0 10px rgba(189, 147, 249, 0.5);
+        }
+        
+        .visualizer {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            box-shadow: 0 0 30px rgba(189, 147, 249, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .note-display {
+            font-size: 5rem;
+            text-shadow: 0 0 20px currentColor;
+            transition: all 0.2s ease;
+        }
+        
+        .frequency-bar {
+            height: 4px;
+            background: linear-gradient(90deg, #9f7aea 0%, #a855f7 50%, #d946ef 100%);
+            transition: width 0.1s ease;
+        }
+        
+        .violin-neck {
+            background: linear-gradient(to right, #2c1a0f, #3a2516, #2c1a0f);
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        
+        .violin-string {
+            position: absolute;
+            background: linear-gradient(to bottom, #f8fafc, #e2e8f0);
+            width: 100%;
+            height: 2px;
+            left: 0;
+        }
+        
+        .finger-position {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: rgba(189, 147, 249, 0.7);
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 2px solid white;
+        }
+        
+        .finger-position:hover {
+            transform: translate(-50%, -50%) scale(1.2);
+            box-shadow: 0 0 15px rgba(189, 147, 249, 0.7);
+        }
+        
+        .finger-position.active {
+            background: #d946ef;
+            box-shadow: 0 0 20px #d946ef;
+        }
+        
+        .glow {
+            animation: glow 2s infinite alternate;
+        }
+        
+        @keyframes glow {
+            from {
+                box-shadow: 0 0 10px -10px #a855f7;
+            }
+            to {
+                box-shadow: 0 0 20px 5px #a855f7;
+            }
+        }
+        
+        .bow {
+            position: absolute;
+            width: 120px;
+            height: 4px;
+            background: linear-gradient(to right, #d1d5db, #f3f4f6, #d1d5db);
+            transform-origin: left center;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .bow-hair {
+            position: absolute;
+            width: 100%;
+            height: 1px;
+            background: linear-gradient(to right, #f8fafc, #e2e8f0, #f8fafc);
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        .sound-wave {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            opacity: 0.3;
+        }
+        
+        .wave-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #a855f7;
+            opacity: 0;
+        }
+        
+        .string-vibration {
+            animation: vibrate 0.1s infinite alternate;
+        }
+        
+        @keyframes vibrate {
+            from {
+                transform: translateY(-1px);
+            }
+            to {
+                transform: translateY(1px);
+            }
+        }
+        
+        .accuracy-meter {
+            background: linear-gradient(to right, #ef4444, #f59e0b, #10b981);
+            height: 6px;
+            border-radius: 3px;
+            margin-top: 8px;
+        }
+        
+        .accuracy-pointer {
+            width: 2px;
+            height: 12px;
+            background: white;
+            position: absolute;
+            top: -3px;
+            transform: translateX(-50%);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-4">
+    <div class="text-center mb-8">
+        <h1 class="title-font text-4xl md:text-5xl mb-2">Violin<span class="text-purple-300">Note</span>Detector</h1>
+        <p class="text-lg text-purple-200 max-w-2xl mx-auto">Play your violin and see the notes in real-time with pitch accuracy feedback</p>
+    </div>
+    
+    <div class="visualizer w-full max-w-3xl p-8 mb-10 relative overflow-hidden">
+        <div class="flex flex-col items-center">
+            <div id="noteDisplay" class="note-display mb-6 text-purple-300">--</div>
+            <div id="frequencyText" class="text-xl mb-2">Frequency: <span class="text-purple-300">0 Hz</span></div>
+            <div id="centsText" class="text-lg mb-4">Pitch accuracy: <span class="text-purple-300">±0 cents</span></div>
+            
+            <div class="w-full bg-gray-700 rounded-full h-2 mb-6 relative">
+                <div id="frequencyBar" class="frequency-bar h-2 rounded-full" style="width: 0%"></div>
+            </div>
+            
+            <div class="w-full mb-8">
+                <div class="accuracy-meter relative">
+                    <div id="accuracyPointer" class="accuracy-pointer"></div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                    <span>Flat</span>
+                    <span>Perfect</span>
+                    <span>Sharp</span>
+                </div>
+            </div>
+            
+            <div class="flex justify-center mb-8">
+                <button id="startBtn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-full glow flex items-center">
+                    <i class="fas fa-microphone mr-2"></i> Start Listening
+                </button>
+            </div>
+            
+            <div class="w-full">
+                <h3 class="text-xl mb-4 text-center">Violin Finger Positions (1st position)</h3>
+                <div class="violin-neck h-24 w-full relative mb-4">
+                    <div id="gString" class="violin-string top-1/4"></div>
+                    <div id="dString" class="violin-string top-2/4"></div>
+                    <div id="aString" class="violin-string top-3/4"></div>
+                    <div id="eString" class="violin-string top-full"></div>
+                    
+                    <!-- G string positions -->
+                    <div data-note="G3" class="finger-position" style="left: 15%; top: 25%;">G</div>
+                    <div data-note="A3" class="finger-position" style="left: 30%; top: 25%;">A</div>
+                    <div data-note="B3" class="finger-position" style="left: 45%; top: 25%;">B</div>
+                    <div data-note="C4" class="finger-position" style="left: 60%; top: 25%;">C</div>
+                    
+                    <!-- D string positions -->
+                    <div data-note="D4" class="finger-position" style="left: 15%; top: 50%;">D</div>
+                    <div data-note="E4" class="finger-position" style="left: 30%; top: 50%;">E</div>
+                    <div data-note="F4" class="finger-position" style="left: 45%; top: 50%;">F</div>
+                    <div data-note="G4" class="finger-position" style="left: 60%; top: 50%;">G</div>
+                    
+                    <!-- A string positions -->
+                    <div data-note="A4" class="finger-position" style="left: 15%; top: 75%;">A</div>
+                    <div data-note="B4" class="finger-position" style="left: 30%; top: 75%;">B</div>
+                    <div data-note="C5" class="finger-position" style="left: 45%; top: 75%;">C</div>
+                    <div data-note="D5" class="finger-position" style="left: 60%; top: 75%;">D</div>
+                    
+                    <!-- E string positions -->
+                    <div data-note="E5" class="finger-position" style="left: 15%; top: 100%;">E</div>
+                    <div data-note="F5" class="finger-position" style="left: 30%; top: 100%;">F</div>
+                    <div data-note="G5" class="finger-position" style="left: 45%; top: 100%;">G</div>
+                    <div data-note="A5" class="finger-position" style="left: 60%; top: 100%;">A</div>
+                    
+                    <div id="bow" class="bow" style="top: 50%; left: 80%; transform: rotate(15deg);">
+                        <div class="bow-hair"></div>
+                    </div>
+                </div>
+                <div class="text-center text-sm text-purple-300">
+                    <p>Click on finger positions to hear reference pitches</p>
+                </div>
+            </div>
+        </div>
+        
+        <div id="soundWave" class="sound-wave"></div>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full mb-10">
+        <div class="bg-white bg-opacity-10 p-6 rounded-xl backdrop-filter backdrop-blur-sm border border-white border-opacity-10">
+            <div class="text-purple-300 text-2xl mb-3"><i class="fas fa-bullseye"></i></div>
+            <h3 class="text-xl font-bold mb-2">Pitch Accuracy</h3>
+            <p class="text-purple-100">See exactly how in-tune your playing is with our precision cents measurement.</p>
+        </div>
+        <div class="bg-white bg-opacity-10 p-6 rounded-xl backdrop-filter backdrop-blur-sm border border-white border-opacity-10">
+            <div class="text-purple-300 text-2xl mb-3"><i class="fas fa-hand-paper"></i></div>
+            <h3 class="text-xl font-bold mb-2">Finger Placement</h3>
+            <p class="text-purple-100">Visual reference for standard 1st position finger placements on all strings.</p>
+        </div>
+        <div class="bg-white bg-opacity-10 p-6 rounded-xl backdrop-filter backdrop-blur-sm border border-white border-opacity-10">
+            <div class="text-purple-300 text-2xl mb-3"><i class="fas fa-chart-line"></i></div>
+            <h3 class="text-xl font-bold mb-2">Real-Time Feedback</h3>
+            <p class="text-purple-100">Immediate visual feedback helps you adjust your intonation as you play.</p>
+        </div>
+    </div>
+    
+    <footer class="text-center text-purple-300 text-sm mt-8">
+        <p>Made with <i class="fas fa-heart text-purple-400"></i> for violinists | ViolinNoteDetector © 2023</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const noteDisplay = document.getElementById('noteDisplay');
+            const frequencyText = document.getElementById('frequencyText');
+            const centsText = document.getElementById('centsText');
+            const frequencyBar = document.getElementById('frequencyBar');
+            const startBtn = document.getElementById('startBtn');
+            const fingerPositions = document.querySelectorAll('.finger-position');
+            const soundWave = document.getElementById('soundWave');
+            const accuracyPointer = document.getElementById('accuracyPointer');
+            const violinStrings = document.querySelectorAll('.violin-string');
+            const bow = document.getElementById('bow');
+            
+            let audioContext;
+            let analyser;
+            let microphone;
+            let isListening = false;
+            let animationId;
+            let activeString = null;
+            
+            // Note frequencies for violin (focusing on first position)
+            const noteFrequencies = {
+                // G string
+                'G3': 196.00, 'A3': 220.00, 'B3': 246.94, 'C4': 261.63,
+                // D string
+                'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'G4': 392.00,
+                // A string
+                'A4': 440.00, 'B4': 493.88, 'C5': 523.25, 'D5': 587.33,
+                // E string
+                'E5': 659.25, 'F5': 698.46, 'G5': 783.99, 'A5': 880.00
+            };
+            
+            // Note names for display (with violin finger numbers)
+            const noteNames = {
+                'G3': 'G (0)', 'A3': 'A (1)', 'B3': 'B (2)', 'C4': 'C (3)',
+                'D4': 'D (0)', 'E4': 'E (1)', 'F4': 'F (2)', 'G4': 'G (3)',
+                'A4': 'A (0)', 'B4': 'B (1)', 'C5': 'C (2)', 'D5': 'D (3)',
+                'E5': 'E (0)', 'F5': 'F (1)', 'G5': 'G (2)', 'A5': 'A (3)'
+            };
+            
+            // Start/stop audio processing
+            startBtn.addEventListener('click', async () => {
+                if (!isListening) {
+                    try {
+                        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        analyser = audioContext.createAnalyser();
+                        analyser.fftSize = 4096; // Higher resolution for better pitch detection
+                        
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        microphone = audioContext.createMediaStreamSource(stream);
+                        microphone.connect(analyser);
+                        
+                        isListening = true;
+                        startBtn.innerHTML = '<i class="fas fa-stop mr-2"></i> Stop Listening';
+                        startBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+                        startBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                        
+                        // Animate bow
+                        animateBow();
+                        
+                        processAudio();
+                    } catch (error) {
+                        console.error('Error accessing microphone:', error);
+                        noteDisplay.textContent = 'Error';
+                        frequencyText.innerHTML = 'Frequency: <span class="text-red-300">Microphone access denied</span>';
+                    }
+                } else {
+                    if (microphone) {
+                        microphone.disconnect();
+                        const tracks = microphone.mediaStream.getTracks();
+                        tracks.forEach(track => track.stop());
+                    }
+                    
+                    if (audioContext) {
+                        audioContext.close();
+                    }
+                    
+                    cancelAnimationFrame(animationId);
+                    
+                    isListening = false;
+                    startBtn.innerHTML = '<i class="fas fa-microphone mr-2"></i> Start Listening';
+                    startBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    startBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+                    
+                    noteDisplay.textContent = '--';
+                    frequencyText.innerHTML = 'Frequency: <span class="text-purple-300">0 Hz</span>';
+                    centsText.innerHTML = 'Pitch accuracy: <span class="text-purple-300">±0 cents</span>';
+                    frequencyBar.style.width = '0%';
+                    accuracyPointer.style.left = '50%';
+                    
+                    // Stop string vibration
+                    violinStrings.forEach(string => {
+                        string.classList.remove('string-vibration');
+                    });
+                    
+                    // Clear sound waves
+                    soundWave.innerHTML = '';
+                }
+            });
+            
+            // Process audio data
+            function processAudio() {
+    const bufferLength = analyser.fftSize;
+    const timeDomainData = new Float32Array(bufferLength);
+    analyser.getFloatTimeDomainData(timeDomainData);
+
+    const frequency = autoCorrelate(timeDomainData, audioContext.sampleRate);
+
+    if (frequency > 0) {
+        const noteInfo = frequencyToNote(frequency);
+
+        noteDisplay.textContent = noteNames[noteInfo.note + noteInfo.octave] || noteInfo.note;
+        noteDisplay.style.color = getNoteColor(noteInfo.note);
+
+        frequencyText.innerHTML = `Frequency: <span class="text-purple-300">${frequency.toFixed(2)} Hz</span>`;
+        centsText.innerHTML = `Pitch accuracy: <span class="${getCentsColor(noteInfo.cents)}">${noteInfo.cents >= 0 ? '+' : ''}${noteInfo.cents} cents</span>`;
+
+        frequencyBar.style.width = `${Math.min(100, ((frequency - 190) / (880 - 190)) * 100)}%`;
+        accuracyPointer.style.left = `${Math.min(100, Math.max(0, (noteInfo.cents + 50)))}%`;
+
+        vibrateString(noteInfo.note + noteInfo.octave);
+        createSoundWave(noteInfo.note);
+    } else {
+        noteDisplay.textContent = '--';
+        frequencyText.innerHTML = 'Frequency: <span class="text-purple-300">0 Hz</span>';
+        centsText.innerHTML = 'Pitch accuracy: <span class="text-purple-300">±0 cents</span>';
+        frequencyBar.style.width = '0%';
+        accuracyPointer.style.left = '50%';
+        violinStrings.forEach(string => string.classList.remove('string-vibration'));
+    }
+
+    animationId = requestAnimationFrame(processAudio);
+}
+function autoCorrelate(buffer, sampleRate) {
+    let SIZE = buffer.length;
+    let rms = 0;
+
+    for (let i = 0; i < SIZE; i++) {
+        rms += buffer[i] * buffer[i];
+    }
+    rms = Math.sqrt(rms / SIZE);
+    if (rms < 0.01) return -1; // too quiet
+
+    let r1 = 0, r2 = SIZE - 1, threshold = 0.2;
+    for (let i = 0; i < SIZE / 2; i++) {
+        if (Math.abs(buffer[i]) < threshold) {
+            r1 = i;
+            break;
+        }
+    }
+
+    for (let i = 1; i < SIZE / 2; i++) {
+        if (Math.abs(buffer[SIZE - i]) < threshold) {
+            r2 = SIZE - i;
+            break;
+        }
+    }
+
+    buffer = buffer.slice(r1, r2);
+    SIZE = buffer.length;
+
+    const autocorrelation = new Array(SIZE).fill(0);
+    for (let lag = 0; lag < SIZE; lag++) {
+        for (let i = 0; i < SIZE - lag; i++) {
+            autocorrelation[lag] += buffer[i] * buffer[i + lag];
+        }
+    }
+
+    let d = 0;
+    while (autocorrelation[d] > autocorrelation[d + 1]) d++;
+
+    let maxVal = -1, maxPos = -1;
+    for (let i = d; i < SIZE; i++) {
+        if (autocorrelation[i] > maxVal) {
+            maxVal = autocorrelation[i];
+            maxPos = i;
+        }
+    }
+
+    let T0 = maxPos;
+
+    return sampleRate / T0;
+}
+
+            // Convert frequency to musical note
+            function frequencyToNote(frequency) {
+                if (frequency < 20) return { note: '', octave: 0, cents: 0 };
+                
+                const A4 = 440;
+                const C0 = A4 * Math.pow(2, -4.75);
+                const halfSteps = Math.round(12 * Math.log2(frequency / C0));
+                const octave = Math.floor(halfSteps / 12);
+                const noteIndex = (halfSteps % 12 + 12) % 12;
+                
+                const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+                const note = notes[noteIndex];
+                
+                // Calculate how many cents off from perfect tuning
+                const expectedFrequency = C0 * Math.pow(2, halfSteps / 12);
+                const cents = Math.floor(1200 * Math.log2(frequency / expectedFrequency));
+                
+                return { note, octave, cents };
+            }
+            
+            // Get color based on note
+            function getNoteColor(note) {
+                const colors = {
+                    'G': '#9f7aea', 'G#': '#a855f7', 'A': '#d946ef', 'A#': '#ec4899',
+                    'B': '#f43f5e', 'C': '#fb7185', 'C#': '#f97316', 'D': '#f59e0b',
+                    'D#': '#eab308', 'E': '#84cc16', 'F': '#10b981', 'F#': '#14b8a6'
+                };
+                return colors[note] || '#a855f7';
+            }
+            
+            // Get color for cents display based on how far from perfect pitch
+            function getCentsColor(cents) {
+                const absCents = Math.abs(cents);
+                if (absCents < 5) return 'text-green-400';
+                if (absCents < 15) return 'text-yellow-400';
+                return 'text-red-400';
+            }
+            
+            // Vibrate the corresponding string
+            function vibrateString(note) {
+                // Determine which string is being played
+                let string = null;
+                if (['G3', 'A3', 'B3', 'C4'].includes(note)) string = 'gString';
+                else if (['D4', 'E4', 'F4', 'G4'].includes(note)) string = 'dString';
+                else if (['A4', 'B4', 'C5', 'D5'].includes(note)) string = 'aString';
+                else if (['E5', 'F5', 'G5', 'A5'].includes(note)) string = 'eString';
+                
+                if (string && string !== activeString) {
+                    // Stop previous string vibration
+                    if (activeString) {
+                        document.getElementById(activeString).classList.remove('string-vibration');
+                    }
+                    
+                    // Start new string vibration
+                    document.getElementById(string).classList.add('string-vibration');
+                    activeString = string;
+                }
+            }
+            
+            // Create sound wave visualization
+            function createSoundWave(note) {
+                // Clear old particles
+                soundWave.innerHTML = '';
+                
+                // Create new particles
+                const particleCount = 30;
+                const color = getNoteColor(note);
+                
+                for (let i = 0; i < particleCount; i++) {
+                    const particle = document.createElement('div');
+                    particle.classList.add('wave-particle');
+                    
+                    // Random position
+                    const x = Math.random() * 100;
+                    const y = Math.random() * 100;
+                    particle.style.left = `${x}%`;
+                    particle.style.top = `${y}%`;
+                    particle.style.backgroundColor = color;
+                    
+                    // Random size
+                    const size = 2 + Math.random() * 4;
+                    particle.style.width = `${size}px`;
+                    particle.style.height = `${size}px`;
+                    
+                    // Random animation
+                    const duration = 1 + Math.random() * 2;
+                    const delay = Math.random() * 3;
+                    particle.style.animation = `fadeInOut ${duration}s ${delay}s infinite`;
+                    
+                    soundWave.appendChild(particle);
+                }
+            }
+            
+            // Animate bow movement
+            function animateBow() {
+                let direction = 1;
+                let position = 80;
+                
+                function moveBow() {
+                    position += direction * 0.2;
+                    
+                    if (position > 90) direction = -1;
+                    if (position < 70) direction = 1;
+                    
+                    bow.style.left = `${position}%`;
+                    
+                    if (isListening) {
+                        requestAnimationFrame(moveBow);
+                    }
+                }
+                
+                moveBow();
+            }
+            
+            // Finger position interactions (play reference tones)
+            fingerPositions.forEach(position => {
+                position.addEventListener('click', () => {
+                    const note = position.getAttribute('data-note');
+                    
+                    if (note) {
+                        // Highlight the position
+                        fingerPositions.forEach(p => p.classList.remove('active'));
+                        position.classList.add('active');
+                        
+                        // Display the note
+                        noteDisplay.textContent = noteNames[note] || note;
+                        noteDisplay.style.color = getNoteColor(note.substring(0, note.length-1));
+                        
+                        // Show frequency
+                        const freq = noteFrequencies[note];
+                        frequencyText.innerHTML = `Frequency: <span class="text-purple-300">${freq.toFixed(2)} Hz</span>`;
+                        
+                        // Show perfect pitch (0 cents)
+                        centsText.innerHTML = 'Pitch accuracy: <span class="text-green-400">±0 cents</span>';
+                        
+                        // Update frequency bar
+                        frequencyBar.style.width = `${Math.min(100, ((freq - 190) / (880 - 190)) * 100)}%`;
+                        
+                        // Center accuracy pointer
+                        accuracyPointer.style.left = '50%';
+                        
+                        // Vibrate the corresponding string
+                        vibrateString(note);
+                        
+                        // Create sound waves
+                        createSoundWave(note.substring(0, note.length-1));
+                    }
+                });
+            });
+            
+            // Add CSS for wave particles
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes fadeInOut {
+                    0% { opacity: 0; transform: scale(0.5); }
+                    50% { opacity: 0.7; transform: scale(1); }
+                    100% { opacity: 0; transform: scale(1.5); }
+                }
+            `;
+            document.head.appendChild(style);
+        });
+    </script>
+</body>
+</html>
